@@ -13,7 +13,7 @@ A ZNC modpython module inspired by the Irssi script available [here](https://tox
 ## Installation
 
 1.  **Requirements:**  
-    Make sure you have ZNC installed and are running Python 3.8+ 
+    Make sure you have ZNC installed and Python 3.8+ 
     
 2.  **Setup:**
     
