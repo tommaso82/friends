@@ -766,7 +766,10 @@ class friends(znc.Module):
             raise ValueError("Usage: setflags <handle> <channel> [+-][flags][@delay] or -- to erase")
         handle = args[0].lower()
         raw_channel = args[1].lstrip('#').lower()
-        channel = f"#{raw_channel}"
+        if raw_channel == '*':
+            channel = '*'  # teniamo '*' per global
+        else:
+            channel = f"#{raw_channel}"
         flag_str = ''.join(args[2:])
         if not (user := self.users.get(handle)):
             self.PutModule(f"ERR User '{handle}' not found")
@@ -818,7 +821,10 @@ class friends(znc.Module):
 
         handle = args[0]
         raw_channel = args[1].lstrip('#').lower()
-        channel = f"#{raw_channel}"
+        if raw_channel == '*':
+            channel = '*'  # teniamo '*' per global
+        else:
+            channel = f"#{raw_channel}"
 
         user = self.users.get(handle.lower())
         if not user:
