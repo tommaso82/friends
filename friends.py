@@ -66,7 +66,7 @@ class FriendUser:
     def __init__(self, handle="", password="", hostmasks="", flags=""):
         self.handle = handle
         self.password_hash = self.hash_password(password)
-        self.hostmasks = set(hostmasks.split(',')) if hostmasks else set()
+        self.hostmasks = {mask.lower() for mask in hostmasks.split(',')} if hostmasks else set()
         self.channel_settings = self.parse_settings(flags)
 
     @staticmethod
@@ -816,14 +816,11 @@ class friends(znc.Module):
             self.PutModule(f"ERR User '{handle}' not found")
             return
 
-        stored_hostmask = next(
-            (mask for mask in user.hostmasks if mask.lower() == target_hostmask), None
-        )
-        if stored_hostmask is None:
+        if target_hostmask not in user.hostmasks:
             self.PutModule(f"ERR Hostmask not found for {handle}")
             return
 
-        user.hostmasks.discard(stored_hostmask)
+        user.hostmasks.discard(target_hostmask)
         self.SaveUser(user)
         self.PutModule(f"OK Removed hostmask: {target_hostmask}")
 
@@ -891,137 +888,7 @@ class friends(znc.Module):
         if not re.fullmatch(r'(?:[+-][aoviukl]+)+(?:@[0-9]+)?|@[0-9]+', flag_str):
             raise ValueError("Invalid flags or delay syntax")
         # Parsing avanzato con regex
-        delay_match = re.search(r'@([0-9]+)
-        delay = int(delay_match.group(1)) if delay_match and delay_match.group(1).isdigit() else None
-        flag_str = re.sub(r'@\d+$', '', flag_str)
-        # Inizializzazione sicura
-        chan_data = user.channel_settings.setdefault(channel, {'flags': set(), 'delay': None})
-        current_flags = chan_data['flags']
-        mode = None
-        # Processamento flags ottimizzato
-        for char in flag_str:
-            if char == '+':
-                mode = 'add'
-            elif char == '-':
-                mode = 'remove'
-            elif mode and char in 'aoviukl':
-                current_flags.add(char) if mode == 'add' else current_flags.discard(char)
-        # Auto-cleanup se nessun flag
-        if not current_flags:
-            chan_data['delay'] = None  # Force reset delay
-        # Aggiornamento delay solo se specificato
-        if delay is not None:
-            chan_data['delay'] = delay
-        # Auto-pulizia finale
-        if not current_flags and chan_data['delay'] is None:
-            del user.channel_settings[channel]
-        self.SaveUser(user)
-        feedback = [
-            f"Flags: {''.join(sorted(current_flags)) or 'none'}",
-            f"Delay: {chan_data['delay']}s" if chan_data['delay'] is not None else "No delay"
-        ]
-        self.PutModule(f"OK {channel} updated - {', '.join(feedback)}")
-
-    def CmdSetDelay(self, args):
-        if len(args) < 2:
-            raise ValueError("Usage: setdelay <handle> <channel> [seconds|delete]")
-
-        handle = args[0]
-        raw_channel = args[1].lstrip('#').lower()
-        if raw_channel == '*':
-            channel = '*'  # teniamo '*' per global
-        else:
-            channel = f"#{raw_channel}"
-
-        user = self.users.get(handle.lower())
-        if not user:
-            raise ValueError("User not found")
-
-        # Verifica se il canale esiste già nelle impostazioni dell'utente
-        if channel not in user.channel_settings:
-            self.PutModule(f"Channel settings not found for {channel}. Use setflags to create an entry.")
-            return  # Esci dalla funzione se il canale non esiste
-
-        # Gestione comando delay
-        if len(args) >= 3:
-            delay_arg = args[2].lower()
-            if delay_arg == "delete":
-                delay = None
-            else:
-                try:
-                    delay = int(args[2])
-                except ValueError:
-                    raise ValueError("Invalid delay value. Use an integer for seconds or 'delete'.")
-                if delay < 0:
-                    raise ValueError("Delay cannot be negative")
-        else:
-            delay = None  # Caso di "delete" implicito se mancano argomenti dopo handle e channel
-
-        user.channel_settings[channel]['delay'] = delay
-        self.SaveUser(user)
-        self.PutModule(f"Delay updated for {channel}")
-
-    def ShowHelp(self, *args):
-        help_msg = """
-=== [ Friends Manager Help ] ===
-
-\x02\x1f[ Module Commands ]\x02\x1f (via ZNC console)
-  adduser <handle> <password> <hostmask> [flags] - Create new user
-  deluser <handle>                               - Delete user
-  addhost <handle> <hostmask>                    - Add hostmask to user
-  delhost <handle> <hostmask>                    - Remove hostmask from user
-  list [handle]                                  - List users/details
-  setflags <handle> <chan/*> <+->[flags][@delay] - Set permissions
-  setdelay <handle> <chan/*> [sec|delete]        - Set autop/voice delay
-  help                                           - Show this message
-
-\x02\x1f[ CTCP Commands ]\x02\x1f
-  AUTH <oldpass> <newpass>         - Change password
-  OP <channel> [password]          - Request OP
-  VOICE <channel> [password]       - Request VOICE
-  INVITE <channel> [password]      - Request INVITE
-  UNBAN <channel> [password]       - Request UNBAN
-  KEY <channel> [password]         - Get channel key
-  LIMIT <channel> [password]       - Increase channel limit
-  LIST [password]                  - List your permissions
-
-\x02\x1f[ Flag Meanings ]\x02\x1f
-  o = OP privileges         v = VOICE privileges
-  i = INVITE privileges     u = UNBAN privileges
-  k = KEY access            l = LIMIT control
-  a = Auto-OP/VOICE on join
-
-\x02\x1f[ Examples ]\x02\x1f
-  # 1. Create a user, then configure each channel
-  adduser john secret123 *!*@isp.com
-  setflags john #chat +av@20       - Auto-VOICE after 20 seconds
-  setflags john #staff +ao@30      - Auto-OP after 30 seconds
-  setflags john #ops +o            - OP on request only (via CTCP)
-  setflags john #secretroom +k     - Allow KEY requests
-
-  # 2. Alternatively, configure permissions with adduser
-  adduser alice pass456 *!*@alice.net ao@30
-    - Global Auto-OP after 30 seconds
-  adduser bob pass789 *!*@bob.net #chat:av@20,#staff:ao@30
-    - Auto-VOICE on #chat; Auto-OP on #staff
-
-  # 3. Change delays
-  setdelay john #staff 0           - Auto-OP immediately
-  setdelay alice * delete          - Use random delay (10-60s)
-
-  # 4. CTCP requests (replace 'znc' with your ZNC IRC nick)
-  /ctcp znc OP #ops secret123
-  /ctcp znc KEY #secretroom secret123
-  /ctcp znc AUTH secret123 newpass456
-
-\x02\x1f[ Notes ]
-  - 'a' enables auto-modes; if both 'o' and 'v' exist, OP wins
-  - Global (*) flags also apply to channels
-  - setflags john #chan -- Remove channel settings
-  - setflags john * --     Remove global settings
-    """
-        self.PutModule(help_msg)
-, flag_str)
+        delay_match = re.search(r'@(\d+)$', flag_str)
         delay = int(delay_match.group(1)) if delay_match and delay_match.group(1).isdigit() else None
         flag_str = re.sub(r'@\d+$', '', flag_str)
         # Inizializzazione sicura
