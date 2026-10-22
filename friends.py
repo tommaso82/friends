@@ -324,6 +324,37 @@ class friends(znc.Module):
             return znc.CONTINUE
 
     # -------------------------------------------------------------------------
+    # Cancellazione Auto-OP/VOICE pendenti
+    # -------------------------------------------------------------------------
+
+    def CancelAutoMode(self, nick, channel=None):
+        nick = nick.lower()
+        channel = channel.lower() if channel else None
+        pending = [
+            job for job in self.queue
+            if not (job[2].lower() == nick and
+                    (channel is None or job[1].lower() == channel))
+        ]
+        if len(pending) != len(self.queue):
+            self.queue = pending
+            heapq.heapify(self.queue)
+
+    def OnPartMessage(self, msg):
+        self.CancelAutoMode(msg.GetNick().GetNick(), msg.GetChan().GetName())
+
+    def OnKickMessage(self, msg):
+        self.CancelAutoMode(msg.GetKickedNick(), msg.GetChan().GetName())
+
+    def OnQuitMessage(self, msg, channels):
+        self.CancelAutoMode(msg.GetNick().GetNick())
+
+    def OnNickMessage(self, msg, channels):
+        self.CancelAutoMode(msg.GetNick().GetNick())
+
+    def OnIRCDisconnected(self):
+        self.queue.clear()
+
+    # -------------------------------------------------------------------------
     # Gestione CTCP (Canale e Privato)
     # -------------------------------------------------------------------------
 
