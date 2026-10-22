@@ -745,6 +745,17 @@ class friends(znc.Module):
         if handle.lower() in self.users:
             raise ValueError("User exists")
 
+        if flags:
+            for item in flags.split(','):
+                if ':' in item:
+                    scope, value = item.split(':', 1)
+                    if not re.fullmatch(r'(?:[#&+!][^:,\s@]+|\*)', scope):
+                        raise ValueError("Invalid channel in flags")
+                else:
+                    value = item
+                if not re.fullmatch(r'[aoviukl]+(?:@[0-9]+)?|@[0-9]+', value):
+                    raise ValueError("Invalid flags or delay syntax")
+
         masks = hostmask.split(',')
         if not all(masks):
             raise ValueError("Invalid hostmask")
