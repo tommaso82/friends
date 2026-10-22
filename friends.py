@@ -53,6 +53,14 @@ class QueueTimer(znc.Timer):
             return znc.HALT
         return znc.CONTINUE
 
+class UnbanTimeout(znc.Timer):
+    def RunJob(self):
+        mod = self.GetModule()
+        data = mod.unban_data
+        if data and data['timer'] is self:
+            mod.unban_data = None
+            mod.CtcpReply(data['nick'], "ERR UNBAN timeout")
+
 class FriendUser:
 
     def __init__(self, handle="", password="", hostmasks="", flags=""):
@@ -148,6 +156,7 @@ class friends(znc.Module):
         self.queue = []
         self.timer = None
         self.current_tick = 0  # contatore tick
+        self.unban_data = None
         self.PutModule("""🖥️  \x02\x1f(Almost) Friends 1.0\x02\x1f  🖥️
 ├ Config: /msg *friends help
 └ Contact: 📧 tom@tom.mk""")
@@ -353,6 +362,7 @@ class friends(znc.Module):
 
     def OnIRCDisconnected(self):
         self.queue.clear()
+        self.unban_data = None
 
     # -------------------------------------------------------------------------
     # Gestione CTCP (Canale e Privato)
@@ -477,19 +487,24 @@ class friends(znc.Module):
             self.Log("[FASE 3] Permessi confermati")
             if not self.IsBotOp(target_channel):
                 return self.CtcpReply(nick, "ERR I m not OP there")
+            if self.unban_data is not None:
+                return self.CtcpReply(nick, "ERR UNBAN busy, please retry")
             hostmask = nick.GetHostMask()
             self.Log(f"[FASE 4] Hostmask ottenuta: {hostmask}")
             self.Log("[FASE 5] Starting unban process")
-            self.Log(f"Inviando MODE {target_channel} +b")
-            self.PutIRC(f"MODE {target_channel} +b")
+            timer = self.CreateTimer(UnbanTimeout, interval=5, cycles=1, label="")
             self.unban_data = {
                 'channel': target_channel.lower(),
                 'hostmask': hostmask,
                 'nick': nick.GetNick(),
                 'bans': [],
-                'active': True,
-                'mode_sent': 'timestamp'
+                'timer': timer
             }
+            try:
+                self.PutIRC(f"MODE {target_channel} +b")
+            except Exception:
+                self.unban_data = None
+                raise
             self.Log(f"[FASE 5] Stato inizializzato: {self.unban_data}")
             return znc.HALT
         except Exception as e:
@@ -613,8 +628,10 @@ class friends(znc.Module):
             if cmd == "367" and self.unban_data and channel == self.unban_data['channel']:
                 self.unban_data['bans'].append(ban_mask)
             elif cmd == "368" and self.unban_data and channel == self.unban_data['channel']:
-                self.ProcessUnban()
-                self.unban_data['active'] = False
+                try:
+                    self.ProcessUnban()
+                finally:
+                    self.unban_data = None
             return znc.CONTINUE
         except Exception as e:
             self.Log(f"!ERRORE in OnRaw: {str(e)}")
