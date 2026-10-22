@@ -837,7 +837,7 @@ class friends(znc.Module):
                         break
             else:
                 # Mostra tutti gli utenti
-                filtered_users = self.users.values()
+                filtered_users = list(self.users.values())
             if not filtered_users:
                 self.PutModule("User not found" if filter_user else "No registered users")
                 return
@@ -944,10 +944,10 @@ class friends(znc.Module):
             else:
                 try:
                     delay = int(args[2])
-                    if delay < 0:
-                        raise ValueError("Delay cannot be negative")
                 except ValueError:
                     raise ValueError("Invalid delay value. Use an integer for seconds or 'delete'.")
+                if delay < 0:
+                    raise ValueError("Delay cannot be negative")
         else:
             delay = None  # Caso di "delete" implicito se mancano argomenti dopo handle e channel
 
@@ -974,7 +974,7 @@ class friends(znc.Module):
   OP <channel> [password]          - Request OP
   VOICE <channel> [password]       - Request VOICE
   INVITE <channel> [password]      - Request INVITE
-  UNBAN [channel] [password]       - Request UNBAN
+  UNBAN <channel> [password]       - Request UNBAN
   KEY <channel> [password]         - Get channel key
   LIMIT <channel> [password]       - Increase channel limit
   LIST [password]                  - List your permissions
@@ -987,8 +987,8 @@ class friends(znc.Module):
 
 \x02\x1f[ Examples ]\x02\x1f
   # Configuration
-  adduser john secret123 *!*@isp.com o@30
-  setflags john #test +voi@20        - Auto-OP+VOICE+INVITE after 20s on #test
+  adduser john secret123 *!*@isp.com ao@30
+  setflags john #test +avoi@20       - Auto-OP after 20s; VOICE/INVITE permitted
   setdelay john * delete             - Disable global delay
   # CTCP Usage
   /ctcp znc AUTH secret123 newpass456   - Change password
