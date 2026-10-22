@@ -986,16 +986,31 @@ class friends(znc.Module):
   a = Auto-OP/VOICE on join
 
 \x02\x1f[ Examples ]\x02\x1f
-  # Configuration
-  adduser john secret123 *!*@isp.com ao@30
-  setflags john #test +avoi@20       - Auto-OP after 20s; VOICE/INVITE permitted
-  setdelay john * delete             - Disable global delay
-  # CTCP Usage
-  /ctcp znc AUTH secret123 newpass456   - Change password
-  /ctcp znc OP #test                    - Request OP
-  /ctcp znc KEY #secretroom             - Get channel key
+  # 1. Create a user, then configure each channel
+  adduser john secret123 *!*@isp.com
+  setflags john #chat +av@20       - Auto-VOICE after 20 seconds
+  setflags john #staff +ao@30      - Auto-OP after 30 seconds
+  setflags john #ops +o            - OP on request only (via CTCP)
+  setflags john #secretroom +k     - Allow KEY requests
+
+  # 2. Alternatively, configure permissions with adduser
+  adduser alice pass456 *!*@alice.net ao@30
+    - Global Auto-OP after 30 seconds
+  adduser bob pass789 *!*@bob.net #chat:av@20,#staff:ao@30
+    - Auto-VOICE on #chat; Auto-OP on #staff
+
+  # 3. Change delays
+  setdelay john #staff 0           - Auto-OP immediately
+  setdelay alice * delete          - Use random delay (10-60s)
+
+  # 4. CTCP requests (replace 'znc' with your ZNC IRC nick)
+  /ctcp znc OP #ops secret123
+  /ctcp znc KEY #secretroom secret123
+  /ctcp znc AUTH secret123 newpass456
 
 \x02\x1f[ Notes ]
+  - 'a' enables auto-modes; if both 'o' and 'v' exist, OP wins
+  - Global (*) flags also apply to channels
   - setflags john #chan -- Remove channel settings
   - setflags john * --     Remove global settings
     """
