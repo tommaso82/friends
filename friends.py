@@ -224,6 +224,40 @@ class friends(znc.Module):
             self.Log(f"!ERRORE in MatchBanPattern: {str(e)}")
             return False
 
+    @staticmethod
+    def HostmasksOverlap(first, second):
+        first, second = first.casefold(), second.casefold()
+        pending = [(0, 0)]
+        seen = set()
+
+        while pending:
+            i, j = pending.pop()
+            if (i, j) in seen:
+                continue
+            seen.add((i, j))
+
+            if i == len(first) and j == len(second):
+                return True
+            if i < len(first) and first[i] == '*':
+                pending.append((i + 1, j))
+            if j < len(second) and second[j] == '*':
+                pending.append((i, j + 1))
+            if i < len(first) and j < len(second) and (
+                first[i] in '*?' or second[j] in '*?' or first[i] == second[j]
+            ):
+                pending.append((
+                    i if first[i] == '*' else i + 1,
+                    j if second[j] == '*' else j + 1
+                ))
+        return False
+
+    def FindHostmaskConflict(self, hostmask):
+        for user in self.users.values():
+            for existing in user.hostmasks:
+                if self.HostmasksOverlap(hostmask, existing):
+                    return user.handle, existing
+        return None
+
     def CheckPermission(self, user, channel, flag):
         channel_lower = channel.lower()
         # Cerca in: canale specifico -> globale -> nessuno
@@ -710,6 +744,19 @@ class friends(znc.Module):
         flags = ' '.join(args[3:]) if len(args) > 3 else ""
         if handle.lower() in self.users:
             raise ValueError("User exists")
+
+        masks = hostmask.split(',')
+        if not all(masks):
+            raise ValueError("Invalid hostmask")
+        for i, mask in enumerate(masks):
+            conflict = self.FindHostmaskConflict(mask)
+            if conflict:
+                owner, existing = conflict
+                raise ValueError(f"Hostmask conflicts with {owner} ({existing})")
+            for previous in masks[:i]:
+                if self.HostmasksOverlap(mask, previous):
+                    raise ValueError(f"Hostmask conflicts with {handle} ({previous})")
+
         new_user = FriendUser(
             handle=handle,
             password=pwd,
@@ -743,8 +790,14 @@ class friends(znc.Module):
             self.PutModule(f"ERR User '{handle}' not found")
             return
 
-        if any(self.MatchHostmask(new_hostmask, hm) for hm in user.hostmasks):
-            self.PutModule(f"ERR Hostmask pattern already exists for {handle}")
+        if not new_hostmask:
+            self.PutModule("ERR Invalid hostmask")
+            return
+
+        conflict = self.FindHostmaskConflict(new_hostmask)
+        if conflict:
+            owner, existing = conflict
+            self.PutModule(f"ERR Hostmask conflicts with {owner} ({existing})")
             return
 
         user.hostmasks.add(new_hostmask)
